@@ -1,7 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const RolePermission = require('../models/RolePermission');
-const { JWT_SECRET } = require('../middleware/auth.middleware');
+const config = require('../config/env');
+const ApiResponse = require('../utils/apiResponse');
+const asyncHandler = require('../utils/asyncHandler');
 
 // Default Role Module Permissions Mapping
 const DEFAULT_ROLE_PERMISSIONS = [
@@ -15,122 +17,121 @@ const DEFAULT_ROLE_PERMISSIONS = [
 ];
 
 // POST /api/auth/login
-exports.login = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
+exports.login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ status: 'error', message: 'Please provide email and password' });
-    }
+  if (!email || !password) {
+    return ApiResponse.badRequest(res, 'Please provide email and password');
+  }
 
-    let user = await User.findOne({ email: email.toLowerCase() });
+  const cleanEmail = email.toLowerCase().trim();
+  let user = await User.findOne({ email: cleanEmail });
 
-    // Fallback seed for Admin account if missing
-    if (!user && email.toLowerCase() === 'admin@gmail.com') {
+  // Auto-seed initial Admin account safely without duplicate key collision
+  if (!user && cleanEmail === 'admin@gmail.com') {
+    try {
       user = await User.create({
         name: 'Alok Sharma',
         email: 'admin@gmail.com',
         password: password || '123456',
         role: 'Admin',
         department: 'IT / Operations',
-        active: true
+        active: true,
       });
-    }
-
-    if (!user) {
-      return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
-    }
-
-    if (!user.active) {
-      return res.status(403).json({ status: 'error', message: 'Account is currently inactive. Contact Admin.' });
-    }
-
-    // Verify password with bcrypt or plain text fallback
-    let isMatch = false;
-    if (user.password) {
-      try {
-        isMatch = await user.comparePassword(password);
-      } catch (err) {
-        // Plain text comparison fallback for legacy records
-        isMatch = user.password === password;
+    } catch (createErr) {
+      if (createErr.code === 11000) {
+        user = await User.findOne({ email: 'admin@gmail.com' });
+      } else {
+        throw createErr;
       }
     }
-    // Allow default password '123456' only if no custom password was ever set
-    if (!isMatch && password === '123456' && (!user.password || user.password === '123456')) {
-      isMatch = true;
-    }
-    if (!isMatch) {
-      return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
-    }
-
-    // Fetch user role permissions
-    let rolePerm = await RolePermission.findOne({ role: user.role });
-    if (!rolePerm) {
-      const defaultMatch = DEFAULT_ROLE_PERMISSIONS.find(r => r.role === user.role);
-      const modules = defaultMatch ? defaultMatch.modules : ['dashboard'];
-      rolePerm = await RolePermission.create({ role: user.role, modules });
-    }
-
-    // Sign JWT token
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    const userData = {
-      id: user._id.toString(),
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      department: user.department || 'Operations',
-      projectAccess: user.projectAccess || [],
-      active: user.active,
-      modules: rolePerm.modules
-    };
-
-    res.status(200).json({
-      status: 'success',
-      message: 'Login successful',
-      token,
-      user: userData
-    });
-  } catch (error) {
-    next(error);
   }
-};
+
+  if (!user) {
+    return ApiResponse.unauthorized(res, 'Invalid email or password');
+  }
+
+  if (!user.active) {
+    return ApiResponse.forbidden(res, 'Account is currently deactivated. Please contact Admin.');
+  }
+
+  // Verify password with bcrypt or fallback
+  let isMatch = false;
+  if (user.password) {
+    try {
+      isMatch = await user.comparePassword(password);
+    } catch (err) {
+      isMatch = user.password === password;
+    }
+  }
+
+  if (!isMatch && password === '123456' && (!user.password || user.password === '123456')) {
+    isMatch = true;
+  }
+
+  if (!isMatch) {
+    return ApiResponse.unauthorized(res, 'Invalid email or password');
+  }
+
+  // Fetch or create user role permissions
+  let rolePerm = await RolePermission.findOne({ role: user.role });
+  if (!rolePerm) {
+    const defaultMatch = DEFAULT_ROLE_PERMISSIONS.find((r) => r.role === user.role);
+    const modules = defaultMatch ? defaultMatch.modules : ['dashboard'];
+    rolePerm = await RolePermission.findOneAndUpdate(
+      { role: user.role },
+      { role: user.role, modules },
+      { upsert: true, new: true }
+    );
+  }
+
+  // Generate JWT Token
+  const token = jwt.sign(
+    { id: user._id, email: user.email, role: user.role },
+    config.JWT_SECRET,
+    { expiresIn: config.JWT_EXPIRES_IN }
+  );
+
+  const userData = {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    department: user.department || 'Operations',
+    projectAccess: user.projectAccess || [],
+    active: user.active,
+    modules: rolePerm?.modules || ['dashboard'],
+  };
+
+  return ApiResponse.success(res, { token, user: userData }, 'Login successful');
+});
 
 // GET /api/auth/me
-exports.getMe = async (req, res, next) => {
-  try {
-    const targetEmail = (req.user && req.user.email) ? req.user.email : req.query.email;
+exports.getMe = asyncHandler(async (req, res) => {
+  const targetEmail = req.user?.email || req.query.email;
 
-    if (!targetEmail) {
-      return res.status(400).json({ status: 'error', message: 'Email query or Authorization token required' });
-    }
-
-    const user = await User.findOne({ email: targetEmail.toLowerCase() });
-    if (!user) {
-      return res.status(404).json({ status: 'error', message: 'User not found' });
-    }
-
-    const rolePerm = await RolePermission.findOne({ role: user.role });
-    const modules = rolePerm ? rolePerm.modules : ['dashboard'];
-
-    res.status(200).json({
-      status: 'success',
-      user: {
-        id: user._id.toString(),
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department,
-        projectAccess: user.projectAccess || [],
-        active: user.active,
-        modules
-      }
-    });
-  } catch (error) {
-    next(error);
+  if (!targetEmail) {
+    return ApiResponse.badRequest(res, 'Email query parameter or Authorization token is required');
   }
-};
+
+  const user = await User.findOne({ email: targetEmail.toLowerCase().trim() });
+  if (!user) {
+    return ApiResponse.notFound(res, 'User not found');
+  }
+
+  const rolePerm = await RolePermission.findOne({ role: user.role });
+  const modules = rolePerm ? rolePerm.modules : ['dashboard'];
+
+  const userData = {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    department: user.department,
+    projectAccess: user.projectAccess || [],
+    active: user.active,
+    modules,
+  };
+
+  return ApiResponse.success(res, userData, 'User profile retrieved successfully');
+});

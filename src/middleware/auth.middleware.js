@@ -1,52 +1,40 @@
 const jwt = require('jsonwebtoken');
+const config = require('../config/env');
 const User = require('../models/User');
-const RolePermission = require('../models/RolePermission');
+const ApiResponse = require('../utils/apiResponse');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'purchase-store-super-secret-key-2026';
+// Middleware to verify JWT token and attach user to request
+const protect = async (req, res, next) => {
+  let token;
 
-exports.protect = async (req, res, next) => {
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (!token) {
+    return ApiResponse.unauthorized(res, 'Authentication required. Please provide a valid token.');
+  }
+
   try {
-    let token;
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-    } else if (req.headers['x-auth-token']) {
-      token = req.headers['x-auth-token'];
+    const decoded = jwt.verify(token, config.JWT_SECRET);
+    const user = await User.findById(decoded.id).select('-password');
+
+    if (!user) {
+      return ApiResponse.unauthorized(res, 'User belonging to this token no longer exists.');
     }
 
-    if (!token) {
-      return next();
+    if (user.active === false) {
+      return ApiResponse.forbidden(res, 'Your user account is deactivated.');
     }
 
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      const user = await User.findById(decoded.id).select('-password');
-      if (user && user.active) {
-        req.user = user;
-      }
-    } catch (err) {
-    }
+    req.user = user;
     next();
   } catch (error) {
-    next(error);
+    return ApiResponse.unauthorized(res, 'Invalid or expired authorization token.');
   }
 };
 
-exports.authorizeModule = (moduleName) => {
-  return async (req, res, next) => {
-    if (!req.user) return next(); 
-
-    if (req.user.role === 'Admin') return next(); 
-
-    const rolePerm = await RolePermission.findOne({ role: req.user.role });
-    if (!rolePerm || !rolePerm.modules.includes(moduleName)) {
-      return res.status(403).json({
-        status: 'error',
-        message: `Forbidden: Role '${req.user.role}'does not have permission to access module'${moduleName}'`
-      });
-    }
-
-    next();
-  };
-};
-
-module.exports.JWT_SECRET = JWT_SECRET;
+module.exports = { protect };

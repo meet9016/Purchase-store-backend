@@ -1,197 +1,214 @@
-const mongoose = require('mongoose');
-
-const col = (name) => mongoose.connection.db.collection(name);
+const PurchaseRequest = require('../models/PurchaseRequest');
+const PurchaseOrder = require('../models/PurchaseOrder');
+const GRN = require('../models/GRN');
+const Stock = require('../models/Stock');
+const StockTransaction = require('../models/StockTransaction');
+const ApiResponse = require('../utils/apiResponse');
+const ApiFeatures = require('../utils/apiFeatures');
+const asyncHandler = require('../utils/asyncHandler');
 
 // ─── PURCHASE REQUESTS ────────────────────────────────────────────────────────
-exports.getAllPRs = async (req, res, next) => {
-  try {
-    const docs = await col('purchaserequests').find({}).sort({ requestDate: -1 }).toArray();
-    res.status(200).json({ status: 'success', count: docs.length, data: docs.map(({ _id, ...r }) => r) });
-  } catch (err) { next(err); }
-};
+exports.getAllPRs = asyncHandler(async (req, res) => {
+  const searchFields = ['prNumber', 'projectName', 'requesterName', 'status', 'priority'];
+  const features = new ApiFeatures(PurchaseRequest.find(), req.query, searchFields)
+    .search()
+    .filter()
+    .sort();
 
-exports.createPR = async (req, res, next) => {
-  try {
-    const { projectId, requestedBy, requiredDate, priority, items, prNumber } = req.body;
-    if (!projectId || !requiredDate || !items?.length) {
-      return res.status(400).json({ status: 'error', message: 'projectId, requiredDate, and items are required' });
-    }
-    const prNum = prNumber || `PR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-    const newPR = {
-      id: `pr-${Date.now()}`,
-      prNumber: prNum,
-      requestDate: new Date().toISOString().split('T')[0],
-      projectId, requestedBy, requiredDate,
-      priority: priority || 'Medium',
-      items: items || [],
-      status: 'Submitted',
-      history: [{ status: 'Submitted', user: requestedBy || 'System', timestamp: new Date().toISOString(), remarks: 'PR Created' }],
-      ...req.body
-    };
-    await col('purchaserequests').insertOne(newPR);
-    const { _id, ...rest } = newPR;
-    res.status(201).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  await features.paginate();
+  const data = await features.query;
 
-exports.updatePR = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const existing = await col('purchaserequests').findOne({ id });
-    if (!existing) return res.status(404).json({ status: 'error', message: 'PR not found' });
-    const updated = { ...existing, ...req.body, id };
-    await col('purchaserequests').replaceOne({ id }, updated);
-    const { _id, ...rest } = updated;
-    res.status(200).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  return ApiResponse.success(res, data, 'Purchase requests retrieved', 200, features.paginationInfo);
+});
 
-exports.deletePR = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    await col('purchaserequests').deleteOne({ id });
-    res.status(200).json({ status: 'success', message: 'PR deleted' });
-  } catch (err) { next(err); }
-};
+exports.createPR = asyncHandler(async (req, res) => {
+  const { projectId, requestedBy, requiredDate, items, prNumber } = req.body;
+  if (!projectId || !requiredDate || !items?.length) {
+    return ApiResponse.badRequest(res, 'projectId, requiredDate, and items are required');
+  }
 
-// ─── PURCHASE ORDERS ─────────────────────────────────────────────────────────
-exports.getAllPOs = async (req, res, next) => {
-  try {
-    const docs = await col('purchaseorders').find({}).sort({ poDate: -1 }).toArray();
-    res.status(200).json({ status: 'success', count: docs.length, data: docs.map(({ _id, ...r }) => r) });
-  } catch (err) { next(err); }
-};
+  const prNum = prNumber || `PR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const prId = req.body.id || `pr-${Date.now()}`;
 
-exports.createPO = async (req, res, next) => {
-  try {
-    const { prId, vendorId, items, expectedDeliveryDate } = req.body;
-    if (!prId || !vendorId || !items?.length) {
-      return res.status(400).json({ status: 'error', message: 'prId, vendorId, and items are required' });
-    }
-    const poNum = `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-    const newPO = {
-      id: `po-${Date.now()}`,
-      poNumber: poNum,
-      poDate: new Date().toISOString().split('T')[0],
-      status: 'Approved',
-      ...req.body
-    };
-    await col('purchaseorders').insertOne(newPO);
-    // Update PR status to PO Created
-    if (prId) {
-      await col('purchaserequests').updateOne({ id: prId }, { $set: { status: 'PO Created' } });
-    }
-    const { _id, ...rest } = newPO;
-    res.status(201).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  const newPR = await PurchaseRequest.create({
+    ...req.body,
+    id: prId,
+    prNumber: prNum,
+    requestDate: req.body.requestDate || new Date().toISOString().split('T')[0],
+    status: req.body.status || 'Submitted',
+    history: req.body.history || [
+      {
+        status: 'Submitted',
+        user: requestedBy || 'System',
+        timestamp: new Date().toISOString(),
+        remarks: 'PR Created',
+      },
+    ],
+  });
 
-exports.updatePO = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const existing = await col('purchaseorders').findOne({ id });
-    if (!existing) return res.status(404).json({ status: 'error', message: 'PO not found' });
-    const updated = { ...existing, ...req.body, id };
-    await col('purchaseorders').replaceOne({ id }, updated);
-    const { _id, ...rest } = updated;
-    res.status(200).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  return ApiResponse.created(res, newPR, 'Purchase Request created successfully');
+});
 
-exports.deletePO = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    await col('purchaseorders').deleteOne({ id });
-    res.status(200).json({ status: 'success', message: 'PO deleted' });
-  } catch (err) { next(err); }
-};
+exports.updatePR = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
 
-// ─── GRNs ─────────────────────────────────────────────────────────────────────
-exports.getAllGRNs = async (req, res, next) => {
-  try {
-    const docs = await col('grns').find({}).sort({ grnDate: -1 }).toArray();
-    res.status(200).json({ status: 'success', count: docs.length, data: docs.map(({ _id, ...r }) => r) });
-  } catch (err) { next(err); }
-};
+  const pr = await PurchaseRequest.findOneAndUpdate(query, req.body, {
+    new: true,
+    runValidators: true,
+  });
 
-exports.createGRN = async (req, res, next) => {
-  try {
-    const { poId, items } = req.body;
-    if (!poId) return res.status(400).json({ status: 'error', message: 'poId is required' });
+  if (!pr) {
+    return ApiResponse.notFound(res, 'Purchase Request not found');
+  }
 
-    const grnNum = `GRN-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-    const newGRN = {
-      id: `grn-${Date.now()}`,
-      grnNumber: grnNum,
-      grnDate: new Date().toISOString().split('T')[0],
-      receivedDate: new Date().toISOString().split('T')[0],
-      ...req.body
-    };
-    await col('grns').insertOne(newGRN);
+  return ApiResponse.success(res, pr, 'Purchase Request updated successfully');
+});
 
-    // Update stock for each GRN item
-    if (Array.isArray(items)) {
-      const po = await col('purchaseorders').findOne({ id: poId });
-      for (const it of items) {
-        const existingStock = await col('stock').findOne({ projectId: po?.projectId, itemId: it.itemId });
-        if (existingStock) {
-          await col('stock').updateOne(
-            { projectId: po?.projectId, itemId: it.itemId },
-            { $inc: { quantity: it.receivedQty || it.quantity || 0 }, $set: { lastUpdated: new Date().toISOString() } }
-          );
-        } else {
-          await col('stock').insertOne({
-            id: `stk-${Date.now()}-${it.itemId}`,
-            projectId: po?.projectId,
-            itemId: it.itemId,
-            itemName: it.itemName,
-            unit: it.unit || 'Pcs',
-            quantity: it.receivedQty || it.quantity || 0,
-            lastUpdated: new Date().toISOString()
-          });
-        }
-        // Record stock transaction
-        await col('stocktransactions').insertOne({
-          id: `txn-${Date.now()}-${it.itemId}`,
-          projectId: po?.projectId,
-          itemId: it.itemId,
-          itemName: it.itemName,
-          type: 'IN',
-          transactionType: 'INWARD_GRN',
-          quantity: it.receivedQty || it.quantity || 0,
-          referenceId: newGRN.id,
-          referenceNumber: grnNum,
-          referenceType: 'GRN',
-          transactionDate: new Date().toISOString().split('T')[0],
-          createdBy: req.body.receivedBy || 'System'
-        });
-      }
-    }
+exports.deletePR = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
 
-    // Update PO status
-    await col('purchaseorders').updateOne({ id: poId }, { $set: { status: 'Partially Received' } });
+  const pr = await PurchaseRequest.findOneAndDelete(query);
+  if (!pr) {
+    return ApiResponse.notFound(res, 'Purchase Request not found');
+  }
 
-    const { _id, ...rest } = newGRN;
-    res.status(201).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  return ApiResponse.success(res, null, 'Purchase Request deleted successfully');
+});
 
-exports.updateGRN = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const existing = await col('grns').findOne({ id });
-    if (!existing) return res.status(404).json({ status: 'error', message: 'GRN not found' });
-    const updated = { ...existing, ...req.body, id };
-    await col('grns').replaceOne({ id }, updated);
-    const { _id, ...rest } = updated;
-    res.status(200).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+// ─── PURCHASE ORDERS ──────────────────────────────────────────────────────────
+exports.getAllPOs = asyncHandler(async (req, res) => {
+  const searchFields = ['poNumber', 'vendorName', 'projectName', 'status'];
+  const features = new ApiFeatures(PurchaseOrder.find(), req.query, searchFields)
+    .search()
+    .filter()
+    .sort();
 
-exports.deleteGRN = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    await col('grns').deleteOne({ id });
-    res.status(200).json({ status: 'success', message: 'GRN deleted' });
-  } catch (err) { next(err); }
-};
+  await features.paginate();
+  const data = await features.query;
+
+  return ApiResponse.success(res, data, 'Purchase orders retrieved', 200, features.paginationInfo);
+});
+
+exports.createPO = asyncHandler(async (req, res) => {
+  const { prId, vendorId, items } = req.body;
+  if (!vendorId || !items?.length) {
+    return ApiResponse.badRequest(res, 'vendorId and items are required');
+  }
+
+  const poNum = req.body.poNumber || `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const poId = req.body.id || `po-${Date.now()}`;
+
+  const newPO = await PurchaseOrder.create({
+    ...req.body,
+    id: poId,
+    poNumber: poNum,
+    poDate: req.body.poDate || new Date().toISOString().split('T')[0],
+    status: req.body.status || 'Approved',
+  });
+
+  // Link PR status to PO Created if prId provided
+  if (prId) {
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(prId);
+    const prQuery = isObjectId ? { _id: prId } : { id: prId };
+    await PurchaseRequest.updateOne(prQuery, { $set: { status: 'PO Created' } });
+  }
+
+  return ApiResponse.created(res, newPO, 'Purchase Order created successfully');
+});
+
+exports.updatePO = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+  const po = await PurchaseOrder.findOneAndUpdate(query, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!po) {
+    return ApiResponse.notFound(res, 'Purchase Order not found');
+  }
+
+  return ApiResponse.success(res, po, 'Purchase Order updated successfully');
+});
+
+exports.deletePO = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+  const po = await PurchaseOrder.findOneAndDelete(query);
+  if (!po) {
+    return ApiResponse.notFound(res, 'Purchase Order not found');
+  }
+
+  return ApiResponse.success(res, null, 'Purchase Order deleted successfully');
+});
+
+// ─── GOODS RECEIPT NOTE (GRN) ─────────────────────────────────────────────────
+exports.getAllGRNs = asyncHandler(async (req, res) => {
+  const searchFields = ['grnNumber', 'poNumber', 'vendorName', 'projectName', 'status', 'gatePassNo'];
+  const features = new ApiFeatures(GRN.find(), req.query, searchFields)
+    .search()
+    .filter()
+    .sort();
+
+  await features.paginate();
+  const data = await features.query;
+
+  return ApiResponse.success(res, data, 'GRNs retrieved', 200, features.paginationInfo);
+});
+
+exports.createGRN = asyncHandler(async (req, res) => {
+  const { poId, receivedItems } = req.body;
+  if (!poId || !receivedItems?.length) {
+    return ApiResponse.badRequest(res, 'poId and receivedItems are required');
+  }
+
+  const grnNum = req.body.grnNumber || `GRN-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const grnId = req.body.id || `grn-${Date.now()}`;
+
+  const newGRN = await GRN.create({
+    ...req.body,
+    id: grnId,
+    grnNumber: grnNum,
+    grnDate: req.body.grnDate || new Date().toISOString().split('T')[0],
+    status: req.body.status || 'Verified',
+  });
+
+  // Update PO status to Received/Partially Received
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(poId);
+  const poQuery = isObjectId ? { _id: poId } : { id: poId };
+  await PurchaseOrder.updateOne(poQuery, { $set: { status: 'Fully Supplied' } });
+
+  return ApiResponse.created(res, newGRN, 'GRN created successfully');
+});
+
+exports.updateGRN = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+  const grn = await GRN.findOneAndUpdate(query, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!grn) {
+    return ApiResponse.notFound(res, 'GRN not found');
+  }
+
+  return ApiResponse.success(res, grn, 'GRN updated successfully');
+});
+
+exports.deleteGRN = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+  const grn = await GRN.findOneAndDelete(query);
+  if (!grn) {
+    return ApiResponse.notFound(res, 'GRN not found');
+  }
+
+  return ApiResponse.success(res, null, 'GRN deleted successfully');
+});

@@ -1,67 +1,79 @@
-const mongoose = require('mongoose');
+const Project = require('../models/Project');
+const Vendor = require('../models/Vendor');
+const Category = require('../models/Category');
+const Item = require('../models/Item');
+const ApiResponse = require('../utils/apiResponse');
+const ApiFeatures = require('../utils/apiFeatures');
+const asyncHandler = require('../utils/asyncHandler');
 
-// Helper to get collection
-const col = (name) => mongoose.connection.db.collection(name);
-
-// ─── GENERIC CRUD FACTORY ─────────────────────────────────────────────────────
-function makeController(collectionName, requiredFields = []) {
+// ─── Generic Mongoose Model Controller Factory ────────────────────────────────
+function createCrudController(Model, searchFields = ['name'], modelName = 'Record') {
   return {
-    getAll: async (req, res, next) => {
-      try {
-        const docs = await col(collectionName).find({}).toArray();
-        const data = docs.map(({ _id, ...rest }) => rest);
-        res.status(200).json({ status: 'success', count: data.length, data });
-      } catch (err) { next(err); }
-    },
+    getAll: asyncHandler(async (req, res) => {
+      const features = new ApiFeatures(Model.find(), req.query, searchFields)
+        .search()
+        .filter()
+        .sort();
 
-    getById: async (req, res, next) => {
-      try {
-        const doc = await col(collectionName).findOne({ id: req.params.id });
-        if (!doc) return res.status(404).json({ status: 'error', message: 'Record not found' });
-        const { _id, ...rest } = doc;
-        res.status(200).json({ status: 'success', data: rest });
-      } catch (err) { next(err); }
-    },
+      await features.paginate();
+      const records = await features.query;
 
-    create: async (req, res, next) => {
-      try {
-        const body = req.body;
-        for (const f of requiredFields) {
-          if (!body[f]) return res.status(400).json({ status: 'error', message: `${f} is required` });
-        }
-        const newDoc = { id: `${collectionName.slice(0,3)}-${Date.now()}`, ...body };
-        await col(collectionName).insertOne(newDoc);
-        const { _id, ...rest } = newDoc;
-        res.status(201).json({ status: 'success', data: rest });
-      } catch (err) { next(err); }
-    },
+      return ApiResponse.success(
+        res,
+        records,
+        `${modelName}s retrieved successfully`,
+        200,
+        features.paginationInfo
+      );
+    }),
 
-    update: async (req, res, next) => {
-      try {
-        const { id } = req.params;
-        const existing = await col(collectionName).findOne({ id });
-        if (!existing) return res.status(404).json({ status: 'error', message: 'Record not found' });
-        const updated = { ...existing, ...req.body, id };
-        await col(collectionName).replaceOne({ id }, updated);
-        const { _id, ...rest } = updated;
-        res.status(200).json({ status: 'success', data: rest });
-      } catch (err) { next(err); }
-    },
+    getById: asyncHandler(async (req, res) => {
+      // Support querying either by Mongoose _id or custom string id
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+      const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+      
+      const record = await Model.findOne(query);
+      if (!record) {
+        return ApiResponse.notFound(res, `${modelName} not found`);
+      }
+      return ApiResponse.success(res, record, `${modelName} details retrieved`);
+    }),
 
-    remove: async (req, res, next) => {
-      try {
-        const { id } = req.params;
-        const existing = await col(collectionName).findOne({ id });
-        if (!existing) return res.status(404).json({ status: 'error', message: 'Record not found' });
-        await col(collectionName).deleteOne({ id });
-        res.status(200).json({ status: 'success', message: 'Deleted successfully' });
-      } catch (err) { next(err); }
-    }
+    create: asyncHandler(async (req, res) => {
+      const record = await Model.create(req.body);
+      return ApiResponse.created(res, record, `${modelName} created successfully`);
+    }),
+
+    update: asyncHandler(async (req, res) => {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+      const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+      const record = await Model.findOneAndUpdate(query, req.body, {
+        new: true,
+        runValidators: true,
+      });
+
+      if (!record) {
+        return ApiResponse.notFound(res, `${modelName} not found`);
+      }
+      return ApiResponse.success(res, record, `${modelName} updated successfully`);
+    }),
+
+    remove: asyncHandler(async (req, res) => {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+      const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+      const record = await Model.findOneAndDelete(query);
+      if (!record) {
+        return ApiResponse.notFound(res, `${modelName} not found`);
+      }
+      return ApiResponse.success(res, null, `${modelName} deleted successfully`);
+    }),
   };
 }
 
-// ─── CONTROLLERS ─────────────────────────────────────────────────────────────
-exports.projects = makeController('projects', ['name', 'location']);
-exports.vendors = makeController('vendors', ['name', 'contactPerson', 'phone']);
-exports.categories = makeController('categories', ['name']);
-exports.items = makeController('items', ['name', 'unit']);
+// ─── Masters Controllers ──────────────────────────────────────────────────────
+exports.projects = createCrudController(Project, ['name', 'location', 'status'], 'Project');
+exports.vendors = createCrudController(Vendor, ['name', 'contactPerson', 'phone', 'email', 'gstNo'], 'Vendor');
+exports.categories = createCrudController(Category, ['name', 'description'], 'Category');
+exports.items = createCrudController(Item, ['name', 'itemCode', 'subCategory', 'categoryName'], 'Item');

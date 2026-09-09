@@ -1,112 +1,147 @@
-const mongoose = require('mongoose');
-
-const col = (name) => mongoose.connection.db.collection(name);
+const Stock = require('../models/Stock');
+const StockTransaction = require('../models/StockTransaction');
+const StoreOutward = require('../models/StoreOutward');
+const ApiResponse = require('../utils/apiResponse');
+const ApiFeatures = require('../utils/apiFeatures');
+const asyncHandler = require('../utils/asyncHandler');
 
 // ─── STOCK ────────────────────────────────────────────────────────────────────
-exports.getAllStock = async (req, res, next) => {
-  try {
-    const filter = {};
-    if (req.query.projectId) filter.projectId = req.query.projectId;
-    const docs = await col('stock').find(filter).toArray();
-    res.status(200).json({ status: 'success', count: docs.length, data: docs.map(({ _id, ...r }) => r) });
-  } catch (err) { next(err); }
-};
+exports.getAllStock = asyncHandler(async (req, res) => {
+  const searchFields = ['itemName', 'itemCode', 'categoryName', 'location', 'projectName'];
+  const features = new ApiFeatures(Stock.find(), req.query, searchFields)
+    .search()
+    .filter()
+    .sort();
 
-exports.updateStock = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const existing = await col('stock').findOne({ id });
-    if (!existing) return res.status(404).json({ status: 'error', message: 'Stock record not found' });
-    const updated = { ...existing, ...req.body, id };
-    await col('stock').replaceOne({ id }, updated);
-    const { _id, ...rest } = updated;
-    res.status(200).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  await features.paginate();
+  const data = await features.query;
 
-exports.getAllStockTransactions = async (req, res, next) => {
-  try {
-    const filter = {};
-    if (req.query.projectId) filter.projectId = req.query.projectId;
-    if (req.query.itemId) filter.itemId = req.query.itemId;
-    const docs = await col('stocktransactions').find(filter).sort({ transactionDate: -1 }).toArray();
-    res.status(200).json({ status: 'success', count: docs.length, data: docs.map(({ _id, ...r }) => r) });
-  } catch (err) { next(err); }
-};
+  return ApiResponse.success(res, data, 'Stock list retrieved', 200, features.paginationInfo);
+});
+
+exports.updateStock = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+  const stock = await Stock.findOneAndUpdate(query, req.body, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!stock) {
+    return ApiResponse.notFound(res, 'Stock record not found');
+  }
+
+  return ApiResponse.success(res, stock, 'Stock record updated successfully');
+});
+
+exports.getAllStockTransactions = asyncHandler(async (req, res) => {
+  const searchFields = ['itemName', 'referenceNumber', 'type', 'transactionType'];
+  const features = new ApiFeatures(StockTransaction.find(), req.query, searchFields)
+    .search()
+    .filter()
+    .sort();
+
+  await features.paginate();
+  const data = await features.query;
+
+  return ApiResponse.success(
+    res,
+    data,
+    'Stock transactions retrieved',
+    200,
+    features.paginationInfo
+  );
+});
 
 // ─── STORE OUTWARDS ───────────────────────────────────────────────────────────
-exports.getAllOutwards = async (req, res, next) => {
-  try {
-    const docs = await col('storeoutwards').find({}).sort({ issueDate: -1 }).toArray();
-    res.status(200).json({ status: 'success', count: docs.length, data: docs.map(({ _id, ...r }) => r) });
-  } catch (err) { next(err); }
-};
+exports.getAllOutwards = asyncHandler(async (req, res) => {
+  const searchFields = ['outwardNumber', 'issueNumber', 'issuedTo', 'department', 'projectName'];
+  const features = new ApiFeatures(StoreOutward.find(), req.query, searchFields)
+    .search()
+    .filter()
+    .sort();
 
-exports.createOutward = async (req, res, next) => {
-  try {
-    const { projectId, issuedTo, department, purpose, items } = req.body;
-    if (!issuedTo || !items?.length) {
-      return res.status(400).json({ status: 'error', message: 'issuedTo and items are required' });
+  await features.paginate();
+  const data = await features.query;
+
+  return ApiResponse.success(res, data, 'Store outwards retrieved', 200, features.paginationInfo);
+});
+
+exports.createOutward = asyncHandler(async (req, res) => {
+  const { projectId, issuedTo, items } = req.body;
+  if (!issuedTo || !items?.length) {
+    return ApiResponse.badRequest(res, 'issuedTo and items are required fields');
+  }
+
+  const outNum = req.body.outwardNumber || `OUT-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const outId = req.body.id || `out-${Date.now()}`;
+
+  const newOutward = await StoreOutward.create({
+    ...req.body,
+    id: outId,
+    outwardNumber: outNum,
+    issueNumber: outNum,
+    issueDate: req.body.issueDate || new Date().toISOString().split('T')[0],
+    date: req.body.date || new Date().toISOString().split('T')[0],
+    status: req.body.status || 'Issued',
+  });
+
+  // Automatically update stock levels & record stock transactions
+  if (Array.isArray(items) && projectId) {
+    for (const it of items) {
+      await Stock.updateOne(
+        { projectId, itemId: it.itemId },
+        {
+          $inc: { quantity: -(it.quantity || 0) },
+          $set: { lastUpdated: new Date().toISOString() },
+        }
+      );
+
+      await StockTransaction.create({
+        id: `txn-${Date.now()}-${it.itemId}`,
+        projectId,
+        itemId: it.itemId,
+        itemName: it.itemName,
+        type: 'OUT',
+        transactionType: 'OUTWARD_ISSUE',
+        quantity: it.quantity || 0,
+        referenceId: newOutward.id,
+        referenceNumber: outNum,
+        referenceType: 'OUTWARD',
+        transactionDate: new Date().toISOString().split('T')[0],
+        createdBy: req.body.issuedBy || 'System',
+      });
     }
+  }
 
-    const outNum = `OUT-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-    const newOutward = {
-      id: `out-${Date.now()}`,
-      outwardNumber: outNum,
-      issueNumber: outNum,
-      issueDate: new Date().toISOString().split('T')[0],
-      date: new Date().toISOString().split('T')[0],
-      status: 'Issued',
-      ...req.body
-    };
-    await col('storeoutwards').insertOne(newOutward);
+  return ApiResponse.created(res, newOutward, 'Store Outward created successfully');
+});
 
-    // Deduct stock for each issued item
-    if (Array.isArray(items) && projectId) {
-      for (const it of items) {
-        await col('stock').updateOne(
-          { projectId, itemId: it.itemId },
-          { $inc: { quantity: -(it.quantity || 0) }, $set: { lastUpdated: new Date().toISOString() } }
-        );
-        // Record stock transaction
-        await col('stocktransactions').insertOne({
-          id: `txn-${Date.now()}-${it.itemId}`,
-          projectId,
-          itemId: it.itemId,
-          itemName: it.itemName,
-          type: 'OUT',
-          transactionType: 'OUTWARD_ISSUE',
-          quantity: it.quantity || 0,
-          referenceId: newOutward.id,
-          referenceNumber: outNum,
-          referenceType: 'OUTWARD',
-          transactionDate: new Date().toISOString().split('T')[0],
-          createdBy: req.body.issuedBy || 'System'
-        });
-      }
-    }
+exports.updateOutward = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
 
-    const { _id, ...rest } = newOutward;
-    res.status(201).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  const outward = await StoreOutward.findOneAndUpdate(query, req.body, {
+    new: true,
+    runValidators: true,
+  });
 
-exports.updateOutward = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const existing = await col('storeoutwards').findOne({ id });
-    if (!existing) return res.status(404).json({ status: 'error', message: 'Outward not found' });
-    const updated = { ...existing, ...req.body, id };
-    await col('storeoutwards').replaceOne({ id }, updated);
-    const { _id, ...rest } = updated;
-    res.status(200).json({ status: 'success', data: rest });
-  } catch (err) { next(err); }
-};
+  if (!outward) {
+    return ApiResponse.notFound(res, 'Store Outward not found');
+  }
 
-exports.deleteOutward = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    await col('storeoutwards').deleteOne({ id });
-    res.status(200).json({ status: 'success', message: 'Outward deleted' });
-  } catch (err) { next(err); }
-};
+  return ApiResponse.success(res, outward, 'Store Outward updated successfully');
+});
+
+exports.deleteOutward = asyncHandler(async (req, res) => {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { id: req.params.id };
+
+  const outward = await StoreOutward.findOneAndDelete(query);
+  if (!outward) {
+    return ApiResponse.notFound(res, 'Store Outward not found');
+  }
+
+  return ApiResponse.success(res, null, 'Store Outward deleted successfully');
+});
