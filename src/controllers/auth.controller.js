@@ -106,6 +106,60 @@ exports.login = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, { token, user: userData }, 'Login successful');
 });
 
+// POST /api/auth/register
+exports.register = asyncHandler(async (req, res) => {
+  const { name, email, password, role, department, projectAccess } = req.body;
+
+  const cleanEmail = email.toLowerCase().trim();
+  const existingUser = await User.findOne({ email: cleanEmail });
+
+  if (existingUser) {
+    return ApiResponse.conflict(res, 'An account with this email address already exists.');
+  }
+
+  const newUser = await User.create({
+    name: name.trim(),
+    email: cleanEmail,
+    password,
+    role: role.trim(),
+    department: department || 'Operations Division',
+    projectAccess: projectAccess || [],
+    active: true,
+  });
+
+  // Assign or get role permissions
+  let rolePerm = await RolePermission.findOne({ role: newUser.role });
+  if (!rolePerm) {
+    const defaultMatch = DEFAULT_ROLE_PERMISSIONS.find((r) => r.role === newUser.role);
+    const modules = defaultMatch ? defaultMatch.modules : ['dashboard'];
+    rolePerm = await RolePermission.findOneAndUpdate(
+      { role: newUser.role },
+      { role: newUser.role, modules },
+      { upsert: true, new: true }
+    );
+  }
+
+  // Generate JWT token
+  const token = jwt.sign(
+    { id: newUser._id, email: newUser.email, role: newUser.role },
+    config.JWT_SECRET,
+    { expiresIn: config.JWT_EXPIRES_IN }
+  );
+
+  const userData = {
+    id: newUser._id.toString(),
+    name: newUser.name,
+    email: newUser.email,
+    role: newUser.role,
+    department: newUser.department,
+    projectAccess: newUser.projectAccess || [],
+    active: newUser.active,
+    modules: rolePerm?.modules || ['dashboard'],
+  };
+
+  return ApiResponse.created(res, { token, user: userData }, 'User registered and authenticated successfully');
+});
+
 // GET /api/auth/me
 exports.getMe = asyncHandler(async (req, res) => {
   const targetEmail = req.user?.email || req.query.email;
@@ -134,4 +188,30 @@ exports.getMe = asyncHandler(async (req, res) => {
   };
 
   return ApiResponse.success(res, userData, 'User profile retrieved successfully');
+});
+
+// PUT /api/auth/change-password
+exports.changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user?._id;
+
+  const user = await User.findById(userId);
+  if (!user) {
+    return ApiResponse.notFound(res, 'User not found');
+  }
+
+  const isMatch = await user.comparePassword(currentPassword);
+  if (!isMatch) {
+    return ApiResponse.badRequest(res, 'Current password is incorrect');
+  }
+
+  user.password = newPassword;
+  await user.save();
+
+  return ApiResponse.success(res, null, 'Password changed successfully');
+});
+
+// POST /api/auth/logout
+exports.logout = asyncHandler(async (req, res) => {
+  return ApiResponse.success(res, null, 'Logged out successfully');
 });
