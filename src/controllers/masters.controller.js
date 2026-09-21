@@ -2,6 +2,7 @@ const Project = require('../models/Project');
 const Vendor = require('../models/Vendor');
 const Category = require('../models/Category');
 const Item = require('../models/Item');
+const Unit = require('../models/Unit');
 const ApiResponse = require('../utils/apiResponse');
 const ApiFeatures = require('../utils/apiFeatures');
 const asyncHandler = require('../utils/asyncHandler');
@@ -96,11 +97,124 @@ async function ensureDefaultRoles() {
   }
 }
 
+const DEFAULT_UNITS = [
+  { code: 'MT', name: 'Metric Ton', description: 'Weight unit for heavy construction steel & cement', status: 'Active' },
+  { code: 'Pcs', name: 'Pieces', description: 'Unit for individual counted goods and equipment', status: 'Active' },
+  { code: 'Bag', name: 'Bags', description: 'Standard packaging bags for cement and dry aggregates', status: 'Active' },
+  { code: 'Kg', name: 'Kilograms', description: 'Standard mass weight unit', status: 'Active' },
+  { code: 'Mtrs', name: 'Meters', description: 'Linear length for conduits, cables and pipes', status: 'Active' },
+  { code: 'Cu.M', name: 'Cubic Meters', description: 'Volumetric measurement for concrete and bulk materials', status: 'Active' },
+  { code: 'Brass', name: 'Brass', description: 'Traditional construction volume measurement for sand/aggregates', status: 'Active' },
+  { code: 'Ltr', name: 'Liters', description: 'Liquid measurement for oils, paints and chemicals', status: 'Active' },
+  { code: 'Box', name: 'Boxes', description: 'Carton packaging units', status: 'Active' },
+  { code: 'Nos', name: 'Numbers', description: 'General numbering count unit', status: 'Active' },
+  { code: 'SqFt', name: 'Square Feet', description: 'Area measurement for flooring, tiles and sheets', status: 'Active' },
+  { code: 'Bundle', name: 'Bundles', description: 'Bundled materials like binding wire, rebars and rebar ties', status: 'Active' },
+];
+
+// Seed default units if none exist
+async function ensureDefaultUnits() {
+  try {
+    const count = await Unit.countDocuments();
+    if (count === 0) {
+      await Unit.insertMany(DEFAULT_UNITS);
+    }
+  } catch (e) {
+    console.warn('Error checking/seeding default units:', e?.message || e);
+  }
+}
+
 // ─── Masters Controllers ──────────────────────────────────────────────────────
 exports.projects = createCrudController(Project, ['name', 'location', 'status'], 'Project');
 exports.vendors = createCrudController(Vendor, ['name', 'contactPerson', 'phone', 'email', 'gstNo'], 'Vendor');
 exports.categories = createCrudController(Category, ['name', 'description'], 'Category');
-exports.items = createCrudController(Item, ['name', 'itemCode', 'subCategory', 'categoryName'], 'Item');
+exports.items = createCrudController(Item, ['name', 'itemCode', 'subCategory', 'categoryName', 'unit'], 'Item');
+
+// ─── Units Master Controller ──────────────────────────────────────────────────
+exports.units = {
+  getAll: asyncHandler(async (req, res) => {
+    await ensureDefaultUnits();
+    const searchFields = ['code', 'name', 'status'];
+    const features = new ApiFeatures(Unit.find(), req.query, searchFields)
+      .search()
+      .filter()
+      .sort({ createdAt: -1 });
+
+    await features.paginate();
+    const records = await features.query;
+
+    return ApiResponse.success(
+      res,
+      records,
+      'Units retrieved successfully',
+      200,
+      features.paginationInfo
+    );
+  }),
+
+  getById: asyncHandler(async (req, res) => {
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+    const query = isObjectId ? { _id: req.params.id } : { code: req.params.id };
+    const record = await Unit.findOne(query);
+    if (!record) {
+      return ApiResponse.notFound(res, 'Unit not found');
+    }
+    return ApiResponse.success(res, record, 'Unit details retrieved');
+  }),
+
+  create: asyncHandler(async (req, res) => {
+    const { code, name, status } = req.body;
+    if (!code || !name) {
+      return ApiResponse.badRequest(res, 'Unit code and unit name are required');
+    }
+
+    const cleanCode = code.trim();
+    const cleanName = name.trim();
+
+    // Check if unit code already exists (case-insensitive)
+    const existing = await Unit.findOne({ code: { $regex: new RegExp(`^${cleanCode}$`, 'i') } });
+    if (existing) {
+      existing.name = cleanName;
+      existing.status = status || existing.status || 'Active';
+      await existing.save();
+      return ApiResponse.success(res, existing, `Unit '${cleanCode}' updated successfully`);
+    }
+
+    const record = await Unit.create({
+      code: cleanCode,
+      name: cleanName,
+      status: status || 'Active',
+    });
+
+    return ApiResponse.created(res, record, 'Unit created successfully');
+  }),
+
+  update: asyncHandler(async (req, res) => {
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+    const query = isObjectId ? { _id: req.params.id } : { code: req.params.id };
+
+    const record = await Unit.findOneAndUpdate(query, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!record) {
+      return ApiResponse.notFound(res, 'Unit not found');
+    }
+    return ApiResponse.success(res, record, 'Unit updated successfully');
+  }),
+
+  remove: asyncHandler(async (req, res) => {
+    const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+    const query = isObjectId ? { _id: req.params.id } : { code: req.params.id };
+
+    const record = await Unit.findOneAndDelete(query);
+    if (!record) {
+      return ApiResponse.notFound(res, 'Unit not found');
+    }
+    return ApiResponse.success(res, null, 'Unit deleted successfully');
+  }),
+};
 
 // ─── Roles Master Controller ──────────────────────────────────────────────────
 exports.roles = {

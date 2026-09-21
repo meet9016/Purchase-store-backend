@@ -33,6 +33,13 @@ router.post('/items', masters.items.create);
 router.put('/items/:id', masters.items.update);
 router.delete('/items/:id', masters.items.remove);
 
+// Units Master
+router.get('/units', masters.units.getAll);
+router.get('/units/:id', masters.units.getById);
+router.post('/units', masters.units.create);
+router.put('/units/:id', masters.units.update);
+router.delete('/units/:id', masters.units.remove);
+
 // Roles Master
 router.get('/roles', masters.roles.getAll);
 router.get('/roles/:id', masters.roles.getById);
