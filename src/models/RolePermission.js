@@ -12,9 +12,27 @@ const rolePermissionSchema = new mongoose.Schema(
   {
     role: {
       type: String,
-      required: [true, 'Role name is required'],
+      required: [true, 'Role identifier is required'],
       unique: true,
       trim: true,
+    },
+    name: {
+      type: String,
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    isSystemRole: {
+      type: Boolean,
+      default: false,
+    },
+    status: {
+      type: String,
+      enum: ['Active', 'Inactive'],
+      default: 'Active',
     },
     modules: [
       {
@@ -33,6 +51,14 @@ const rolePermissionSchema = new mongoose.Schema(
   }
 );
 
+// Pre-save hook to ensure name matches role if not explicitly provided
+rolePermissionSchema.pre('save', function () {
+  if (!this.name && this.role) {
+    this.name = this.role;
+  }
+});
+
 const RolePermission = mongoose.model('RolePermission', rolePermissionSchema);
 
 module.exports = RolePermission;
+

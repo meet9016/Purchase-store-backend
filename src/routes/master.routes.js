@@ -33,4 +33,12 @@ router.post('/items', masters.items.create);
 router.put('/items/:id', masters.items.update);
 router.delete('/items/:id', masters.items.remove);
 
+// Roles Master
+router.get('/roles', masters.roles.getAll);
+router.get('/roles/:id', masters.roles.getById);
+router.post('/roles', masters.roles.create);
+router.put('/roles/:id', masters.roles.update);
+router.delete('/roles/:id', masters.roles.remove);
+
 module.exports = router;
+
