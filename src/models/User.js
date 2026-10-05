@@ -3,6 +3,10 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema(
   {
+    id: {
+      type: String,
+      trim: true,
+    },
     name: {
       type: String,
       required: [true, 'Name is required'],
@@ -41,11 +45,30 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
 
 // Hash password before saving if modified
 userSchema.pre('save', async function () {
+  if (!this.id && this._id) {
+    this.id = this._id.toString();
+  }
   if (!this.isModified('password')) return;
   if (!this.password) return;
   if (this.password.startsWith('$2a$') || this.password.startsWith('$2b$')) return;
@@ -65,3 +88,4 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;
+

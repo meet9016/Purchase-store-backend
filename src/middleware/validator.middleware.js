@@ -102,8 +102,8 @@ exports.validatePR = (req, res, next) => {
     errors.push('At least one line item is required');
   } else {
     items.forEach((item, index) => {
-      if (!item.itemId) errors.push(`Item #${index + 1}: Item selection is required`);
-      if (!item.quantity || item.quantity <= 0) errors.push(`Item #${index + 1}: Quantity must be greater than 0`);
+      if (!item.itemId && !item.name && !item.itemName) errors.push(`Item #${index + 1}: Item selection is required`);
+      if (item.quantity === undefined || Number(item.quantity) <= 0) errors.push(`Item #${index + 1}: Quantity must be greater than 0`);
     });
   }
 
@@ -126,8 +126,8 @@ exports.validatePO = (req, res, next) => {
     errors.push('At least one item is required in the Purchase Order');
   } else {
     items.forEach((item, index) => {
-      if (!item.itemId) errors.push(`Item #${index + 1}: Item selection is required`);
-      if (!item.quantity || item.quantity <= 0) errors.push(`Item #${index + 1}: Quantity must be greater than 0`);
+      if (!item.itemId && !item.name && !item.itemName) errors.push(`Item #${index + 1}: Item selection is required`);
+      if (item.quantity === undefined || Number(item.quantity) <= 0) errors.push(`Item #${index + 1}: Quantity must be greater than 0`);
     });
   }
 
@@ -139,14 +139,15 @@ exports.validatePO = (req, res, next) => {
 };
 
 exports.validateGRN = (req, res, next) => {
-  const { poId, items } = req.body;
+  const { poId, items, receivedItems } = req.body;
   const errors = [];
 
   if (!poId || !isNonEmptyString(poId)) {
     errors.push('PO Reference is required');
   }
 
-  if (!Array.isArray(items) || items.length === 0) {
+  const list = items || receivedItems;
+  if (!Array.isArray(list) || list.length === 0) {
     errors.push('At least one received item is required');
   }
 
@@ -172,8 +173,8 @@ exports.validateStoreOutward = (req, res, next) => {
     errors.push('At least one issue item is required');
   } else {
     items.forEach((item, index) => {
-      if (!item.itemId) errors.push(`Item #${index + 1}: Item selection is required`);
-      if (!item.quantity || item.quantity <= 0) errors.push(`Item #${index + 1}: Quantity must be greater than 0`);
+      if (!item.itemId && !item.name && !item.itemName) errors.push(`Item #${index + 1}: Item selection is required`);
+      if (item.quantity === undefined || Number(item.quantity) <= 0) errors.push(`Item #${index + 1}: Quantity must be greater than 0`);
     });
   }
 
@@ -188,11 +189,11 @@ exports.validateStoreOutward = (req, res, next) => {
  * Finance Domain Validations
  */
 exports.validateVendorBill = (req, res, next) => {
-  const { billAmount, vendorName, poNumber } = req.body;
+  const { billAmount } = req.body;
   const errors = [];
 
-  if (!billAmount || Number(billAmount) <= 0) {
-    errors.push('Bill amount must be greater than 0');
+  if (billAmount === undefined || Number(billAmount) < 0) {
+    errors.push('Bill amount must be a valid non-negative number');
   }
 
   if (errors.length > 0) {
@@ -210,7 +211,7 @@ exports.validatePaymentRequest = (req, res, next) => {
     errors.push('Vendor Bill reference is required');
   }
 
-  if (!requestedAmount || Number(requestedAmount) <= 0) {
+  if (requestedAmount === undefined || Number(requestedAmount) <= 0) {
     errors.push('Requested amount must be greater than 0');
   }
 
@@ -222,14 +223,15 @@ exports.validatePaymentRequest = (req, res, next) => {
 };
 
 exports.validatePaymentEntry = (req, res, next) => {
-  const { billId, paymentAmount, paymentMode } = req.body;
+  const { billId, paymentAmount, amountPaid, paymentMode } = req.body;
   const errors = [];
 
   if (!billId || !isNonEmptyString(billId)) {
     errors.push('Bill reference is required');
   }
 
-  if (!paymentAmount || Number(paymentAmount) <= 0) {
+  const amt = paymentAmount !== undefined ? paymentAmount : amountPaid;
+  if (amt === undefined || Number(amt) <= 0) {
     errors.push('Payment amount must be greater than 0');
   }
 
@@ -243,3 +245,4 @@ exports.validatePaymentEntry = (req, res, next) => {
 
   next();
 };
+

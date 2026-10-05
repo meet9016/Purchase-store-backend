@@ -1,70 +1,92 @@
 const mongoose = require('mongoose');
 
 const prItemSchema = new mongoose.Schema({
+  itemId: {
+    type: String,
+    trim: true,
+  },
+  itemName: {
+    type: String,
+    trim: true,
+  },
   item: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Item',
-    required: true,
+    type: mongoose.Schema.Types.Mixed,
   },
   quantity: {
     type: Number,
     required: true,
-    min: [1, 'Quantity must be at least 1'],
+    min: [0, 'Quantity cannot be negative'],
   },
   unit: {
     type: String,
-    required: true,
+    default: 'Pcs',
   },
   remarks: {
     type: String,
     trim: true,
+    default: '',
   },
-});
+}, { _id: false });
 
 const timelineSchema = new mongoose.Schema({
   status: {
     type: String,
-    required: true,
+    default: 'Submitted',
   },
   user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
+    type: String,
+    default: 'System',
   },
   timestamp: {
-    type: Date,
-    default: Date.now,
+    type: String,
+    default: () => new Date().toISOString(),
   },
   remarks: {
     type: String,
     trim: true,
+    default: '',
   },
-});
+}, { _id: false });
 
 const purchaseRequestSchema = new mongoose.Schema(
   {
+    id: {
+      type: String,
+      trim: true,
+    },
     prNumber: {
       type: String,
       required: true,
       unique: true,
     },
     requestDate: {
-      type: Date,
-      default: Date.now,
+      type: String,
+      default: () => new Date().toISOString().split('T')[0],
+    },
+    projectId: {
+      type: String,
+      trim: true,
+    },
+    projectName: {
+      type: String,
+      trim: true,
+      default: '',
     },
     project: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Project',
-      required: true,
+      type: mongoose.Schema.Types.Mixed,
     },
     requestedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
+      type: String,
+      trim: true,
+    },
+    requesterName: {
+      type: String,
+      trim: true,
+      default: '',
     },
     requiredDate: {
-      type: Date,
-      required: true,
+      type: String,
+      trim: true,
     },
     priority: {
       type: String,
@@ -74,38 +96,48 @@ const purchaseRequestSchema = new mongoose.Schema(
     items: [prItemSchema],
     status: {
       type: String,
-      enum: [
-        'Draft',
-        'Submitted',
-        'Under Review',
-        'Approved',
-        'Rejected',
-        'PO Generated',
-        'Order Placed',
-        'Partially Received',
-        'Fully Received',
-        'Closed',
-      ],
-      default: 'Draft',
+      default: 'Submitted',
     },
     rejectionReason: {
       type: String,
       trim: true,
-      required: function () {
-        return this.status === 'Rejected';
-      },
+      default: '',
     },
     attachmentUrl: {
       type: String,
       trim: true,
+      default: '',
     },
     history: [timelineSchema],
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
+
+purchaseRequestSchema.pre('save', function () {
+  if (!this.id && this._id) {
+    this.id = this._id.toString();
+  }
+});
 
 const PurchaseRequest = mongoose.model('PurchaseRequest', purchaseRequestSchema);
 
 module.exports = PurchaseRequest;
+

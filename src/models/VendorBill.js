@@ -2,28 +2,46 @@ const mongoose = require('mongoose');
 
 const vendorBillSchema = new mongoose.Schema(
   {
-    vendor: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Vendor',
-      required: true,
-    },
-    poId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'PurchaseOrder',
-      required: true,
-    },
-    poNumber: {
+    id: {
       type: String,
-      required: true,
+      trim: true,
     },
     billNumber: {
       type: String,
       required: true,
       unique: true,
     },
+    vendorInvoiceNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    poId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    poNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    vendorId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    vendorName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    vendor: {
+      type: mongoose.Schema.Types.Mixed,
+    },
     billDate: {
-      type: Date,
-      required: true,
+      type: String,
+      default: () => new Date().toISOString().split('T')[0],
     },
     billAmount: {
       type: Number,
@@ -31,42 +49,59 @@ const vendorBillSchema = new mongoose.Schema(
       min: [0, 'Bill amount cannot be negative'],
     },
     creditPeriod: {
-      type: Number, // In days
-      required: true,
+      type: Number,
+      default: 30,
     },
     dueDate: {
-      type: Date,
-      required: true,
+      type: String,
+      trim: true,
+      default: '',
     },
     paidAmount: {
       type: Number,
       default: 0,
-      min: [0, 'Paid amount cannot be negative'],
     },
     outstandingAmount: {
       type: Number,
-      required: true,
-      min: [0, 'Outstanding amount cannot be negative'],
+      default: 0,
+    },
+    status: {
+      type: String,
+      default: 'Pending',
     },
     paymentStatus: {
       type: String,
-      enum: [
-        'Upcoming',
-        'Due',
-        'Payment Request Pending',
-        'Payment Requested',
-        'Partially Paid',
-        'Paid',
-        'Overdue',
-      ],
       default: 'Upcoming',
     },
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
+
+vendorBillSchema.pre('save', function () {
+  if (!this.id && this._id) {
+    this.id = this._id.toString();
+  }
+});
 
 const VendorBill = mongoose.model('VendorBill', vendorBillSchema);
 
 module.exports = VendorBill;
+

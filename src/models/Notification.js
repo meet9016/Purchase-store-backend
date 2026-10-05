@@ -2,14 +2,18 @@ const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema(
   {
+    id: {
+      type: String,
+      trim: true,
+    },
     recipientRole: {
       type: String,
-      enum: ['Admin', 'Requester', 'Purchase', 'Store', 'Accounts', 'Management', 'All'],
-      required: true,
+      default: 'All',
     },
     recipientUser: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User', // If null, targets the entire role
+      type: String,
+      trim: true,
+      default: '',
     },
     title: {
       type: String,
@@ -21,26 +25,58 @@ const notificationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    read: {
+      type: Boolean,
+      default: false,
+    },
     readBy: [
       {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        type: String,
       },
     ],
     referenceModule: {
       type: String,
       trim: true,
+      default: '',
     },
     referenceId: {
       type: String,
       trim: true,
+      default: '',
+    },
+    timestamp: {
+      type: String,
+      default: () => new Date().toISOString(),
     },
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
+
+notificationSchema.pre('save', function () {
+  if (!this.id && this._id) {
+    this.id = this._id.toString();
+  }
+});
 
 const Notification = mongoose.model('Notification', notificationSchema);
 
 module.exports = Notification;
+

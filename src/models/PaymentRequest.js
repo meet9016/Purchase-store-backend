@@ -2,65 +2,118 @@ const mongoose = require('mongoose');
 
 const paymentRequestSchema = new mongoose.Schema(
   {
+    id: {
+      type: String,
+      trim: true,
+    },
+    requestId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    requestNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    vendorId: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    vendorName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     vendor: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Vendor',
-      required: true,
+      type: mongoose.Schema.Types.Mixed,
     },
     billId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'VendorBill',
-      required: true,
+      type: String,
+      trim: true,
+      default: '',
     },
     billNumber: {
       type: String,
-      required: true,
+      trim: true,
+      default: '',
     },
     poNumber: {
       type: String,
-      required: true,
+      trim: true,
+      default: '',
     },
     billAmount: {
       type: Number,
-      required: true,
+      default: 0,
     },
     dueDate: {
-      type: Date,
-      required: true,
+      type: String,
+      trim: true,
+      default: '',
     },
     outstandingAmount: {
       type: Number,
-      required: true,
+      default: 0,
     },
     requestedAmount: {
       type: Number,
       required: true,
-      min: [1, 'Requested amount must be positive'],
+      min: [0, 'Requested amount must be positive'],
     },
     requestDate: {
-      type: Date,
-      default: Date.now,
+      type: String,
+      default: () => new Date().toISOString().split('T')[0],
     },
     requestedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
+      type: String,
+      trim: true,
+      default: '',
+    },
+    requesterName: {
+      type: String,
+      trim: true,
+      default: '',
     },
     remarks: {
       type: String,
       trim: true,
+      default: '',
     },
     status: {
       type: String,
-      enum: ['Pending', 'Approved', 'Rejected'],
       default: 'Pending',
     },
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
+
+paymentRequestSchema.pre('save', function () {
+  if (!this.id && this._id) {
+    this.id = this._id.toString();
+  }
+});
 
 const PaymentRequest = mongoose.model('PaymentRequest', paymentRequestSchema);
 
 module.exports = PaymentRequest;
+

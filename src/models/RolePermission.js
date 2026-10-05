@@ -10,6 +10,10 @@ const actionCapabilitySchema = new mongoose.Schema({
 
 const rolePermissionSchema = new mongoose.Schema(
   {
+    id: {
+      type: String,
+      trim: true,
+    },
     role: {
       type: String,
       required: [true, 'Role identifier is required'],
@@ -31,7 +35,6 @@ const rolePermissionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Active', 'Inactive'],
       default: 'Active',
     },
     modules: [
@@ -39,7 +42,6 @@ const rolePermissionSchema = new mongoose.Schema(
         type: String,
       },
     ],
-    // Granular feature-wise capability permissions matrix
     permissions: {
       type: Map,
       of: actionCapabilitySchema,
@@ -48,6 +50,22 @@ const rolePermissionSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret.id || ret._id.toString();
+        delete ret.__v;
+        return ret;
+      },
+    },
   }
 );
 
@@ -56,9 +74,13 @@ rolePermissionSchema.pre('save', function () {
   if (!this.name && this.role) {
     this.name = this.role;
   }
+  if (!this.id && this._id) {
+    this.id = this._id.toString();
+  }
 });
 
 const RolePermission = mongoose.model('RolePermission', rolePermissionSchema);
 
 module.exports = RolePermission;
+
 

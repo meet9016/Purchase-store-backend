@@ -161,9 +161,10 @@ exports.getAllGRNs = asyncHandler(async (req, res) => {
 });
 
 exports.createGRN = asyncHandler(async (req, res) => {
-  const { poId, receivedItems } = req.body;
-  if (!poId || !receivedItems?.length) {
-    return ApiResponse.badRequest(res, 'poId and receivedItems are required');
+  const { poId } = req.body;
+  const itemsList = req.body.items || req.body.receivedItems || [];
+  if (!poId || !itemsList.length) {
+    return ApiResponse.badRequest(res, 'poId and items are required');
   }
 
   const grnNum = req.body.grnNumber || `GRN-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
@@ -172,15 +173,55 @@ exports.createGRN = asyncHandler(async (req, res) => {
   const newGRN = await GRN.create({
     ...req.body,
     id: grnId,
+    items: itemsList,
     grnNumber: grnNum,
     grnDate: req.body.grnDate || new Date().toISOString().split('T')[0],
     status: req.body.status || 'Verified',
   });
 
-  // Update PO status to Received/Partially Received
+  // Update PO status to Received/Fully Supplied
   const isObjectId = /^[0-9a-fA-F]{24}$/.test(poId);
   const poQuery = isObjectId ? { _id: poId } : { id: poId };
   await PurchaseOrder.updateOne(poQuery, { $set: { status: 'Fully Supplied' } });
+
+  // Update Stock & Record Inward Transaction
+  if (req.body.projectId) {
+    for (const it of itemsList) {
+      const itId = it.itemId || it.id;
+      const qty = Number(it.receivedQty || it.quantity || 0);
+      if (itId && qty > 0) {
+        await Stock.findOneAndUpdate(
+          { projectId: req.body.projectId, itemId: itId },
+          {
+            $inc: { quantity: qty, currentStock: qty },
+            $set: {
+              itemName: it.itemName || 'Material',
+              unit: it.unit || 'Pcs',
+              projectName: req.body.projectName || '',
+              lastUpdated: new Date().toISOString(),
+            },
+          },
+          { upsert: true, new: true }
+        );
+
+        await StockTransaction.create({
+          id: `txn-${Date.now()}-${itId}`,
+          projectId: req.body.projectId,
+          itemId: itId,
+          itemName: it.itemName || 'Material',
+          type: 'IN',
+          transactionType: 'Inward',
+          quantity: qty,
+          inwardQty: qty,
+          referenceId: newGRN.id,
+          referenceNumber: grnNum,
+          referenceType: 'GRN',
+          transactionDate: new Date().toISOString().split('T')[0],
+          createdBy: req.body.receivedBy || 'System',
+        });
+      }
+    }
+  }
 
   return ApiResponse.created(res, newGRN, 'GRN created successfully');
 });

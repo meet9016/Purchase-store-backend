@@ -162,18 +162,23 @@ exports.getAllPaymentEntries = asyncHandler(async (req, res) => {
 });
 
 exports.createPaymentEntry = asyncHandler(async (req, res) => {
-  const { billId, amountPaid, paymentMode } = req.body;
-  if (!amountPaid || !paymentMode) {
-    return ApiResponse.badRequest(res, 'amountPaid and paymentMode are required');
+  const { billId, paymentMode } = req.body;
+  const amountPaid = req.body.paymentAmount !== undefined ? req.body.paymentAmount : req.body.amountPaid;
+
+  if (amountPaid === undefined || !paymentMode) {
+    return ApiResponse.badRequest(res, 'paymentAmount/amountPaid and paymentMode are required');
   }
 
-  const entryNum = req.body.entryNumber || `PAY-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const entryNum = req.body.paymentNumber || req.body.paymentId || req.body.entryNumber || `PAY-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
   const entryId = req.body.id || `entry-${Date.now()}`;
 
   const newEntry = await PaymentEntry.create({
     ...req.body,
     id: entryId,
+    paymentId: req.body.paymentId || entryNum,
+    paymentNumber: entryNum,
     entryNumber: entryNum,
+    paymentAmount: Number(amountPaid),
     paymentDate: req.body.paymentDate || new Date().toISOString().split('T')[0],
   });
 
@@ -188,7 +193,7 @@ exports.createPaymentEntry = asyncHandler(async (req, res) => {
       const paymentStatus = newOutstanding === 0 ? 'Paid' : newPaid > 0 ? 'Partially Paid' : bill.paymentStatus;
       await VendorBill.updateOne(
         billQuery,
-        { $set: { paidAmount: newPaid, outstandingAmount: newOutstanding, paymentStatus } }
+        { $set: { paidAmount: newPaid, outstandingAmount: newOutstanding, paymentStatus, status: paymentStatus } }
       );
     }
   }
