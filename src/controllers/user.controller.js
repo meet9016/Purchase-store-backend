@@ -26,7 +26,9 @@ exports.getAllUsers = asyncHandler(async (req, res) => {
 
 // GET /api/users/:id
 exports.getUserById = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id).select('-password');
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { $or: [{ id: req.params.id }, { email: req.params.id }] };
+  const user = await User.findOne(query).select('-password');
   if (!user) {
     return ApiResponse.notFound(res, 'User not found');
   }
@@ -47,6 +49,7 @@ exports.createUser = asyncHandler(async (req, res) => {
   }
 
   const user = await User.create({
+    id: req.body.id || `usr-${Date.now()}`,
     name,
     email: email.toLowerCase(),
     role,
@@ -67,7 +70,10 @@ exports.updateUser = asyncHandler(async (req, res) => {
   const updates = { ...req.body };
   delete updates.password; // Handle password updates separately if needed
 
-  const user = await User.findByIdAndUpdate(req.params.id, updates, {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { $or: [{ id: req.params.id }, { email: req.params.id }] };
+
+  const user = await User.findOneAndUpdate(query, updates, {
     new: true,
     runValidators: true,
   }).select('-password');
@@ -81,7 +87,10 @@ exports.updateUser = asyncHandler(async (req, res) => {
 
 // DELETE /api/users/:id
 exports.deleteUser = asyncHandler(async (req, res) => {
-  const user = await User.findByIdAndDelete(req.params.id);
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
+  const query = isObjectId ? { _id: req.params.id } : { $or: [{ id: req.params.id }, { email: req.params.id }] };
+
+  const user = await User.findOneAndDelete(query);
   if (!user) {
     return ApiResponse.notFound(res, 'User not found');
   }

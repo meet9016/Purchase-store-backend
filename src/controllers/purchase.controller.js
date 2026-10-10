@@ -27,7 +27,18 @@ exports.createPR = asyncHandler(async (req, res) => {
     return ApiResponse.badRequest(res, 'projectId, requiredDate, and items are required');
   }
 
-  const prNum = prNumber || `PR-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const currentYear = new Date().getFullYear();
+  let prNum = prNumber;
+  if (!prNum || await PurchaseRequest.exists({ prNumber: prNum })) {
+    const count = await PurchaseRequest.countDocuments();
+    let nextSeq = count + 101;
+    let candidate = `PR-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    while (await PurchaseRequest.exists({ prNumber: candidate })) {
+      nextSeq++;
+      candidate = `PR-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    }
+    prNum = candidate;
+  }
   const prId = req.body.id || `pr-${Date.now()}`;
 
   const newPR = await PurchaseRequest.create({
@@ -97,7 +108,18 @@ exports.createPO = asyncHandler(async (req, res) => {
     return ApiResponse.badRequest(res, 'vendorId and items are required');
   }
 
-  const poNum = req.body.poNumber || `PO-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const currentYear = new Date().getFullYear();
+  let poNum = req.body.poNumber;
+  if (!poNum || await PurchaseOrder.exists({ poNumber: poNum })) {
+    const count = await PurchaseOrder.countDocuments();
+    let nextSeq = count + 101;
+    let candidate = `PO-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    while (await PurchaseOrder.exists({ poNumber: candidate })) {
+      nextSeq++;
+      candidate = `PO-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    }
+    poNum = candidate;
+  }
   const poId = req.body.id || `po-${Date.now()}`;
 
   const newPO = await PurchaseOrder.create({
@@ -167,7 +189,18 @@ exports.createGRN = asyncHandler(async (req, res) => {
     return ApiResponse.badRequest(res, 'poId and items are required');
   }
 
-  const grnNum = req.body.grnNumber || `GRN-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const currentYear = new Date().getFullYear();
+  let grnNum = req.body.grnNumber;
+  if (!grnNum || await GRN.exists({ grnNumber: grnNum })) {
+    const count = await GRN.countDocuments();
+    let nextSeq = count + 101;
+    let candidate = `GRN-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    while (await GRN.exists({ grnNumber: candidate })) {
+      nextSeq++;
+      candidate = `GRN-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    }
+    grnNum = candidate;
+  }
   const grnId = req.body.id || `grn-${Date.now()}`;
 
   const newGRN = await GRN.create({

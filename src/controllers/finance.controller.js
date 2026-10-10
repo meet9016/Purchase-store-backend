@@ -25,7 +25,18 @@ exports.createBill = asyncHandler(async (req, res) => {
     return ApiResponse.badRequest(res, 'poId and billAmount are required');
   }
 
-  const billNum = req.body.billNumber || `BILL-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const currentYear = new Date().getFullYear();
+  let billNum = req.body.billNumber;
+  if (!billNum || await VendorBill.exists({ billNumber: billNum })) {
+    const count = await VendorBill.countDocuments();
+    let nextSeq = count + 101;
+    let candidate = `BILL-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    while (await VendorBill.exists({ billNumber: candidate })) {
+      nextSeq++;
+      candidate = `BILL-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    }
+    billNum = candidate;
+  }
   const billDate = req.body.billDate || new Date().toISOString().split('T')[0];
   const creditPeriod = req.body.creditPeriod || 30;
   const dueDate =
@@ -169,7 +180,18 @@ exports.createPaymentEntry = asyncHandler(async (req, res) => {
     return ApiResponse.badRequest(res, 'paymentAmount/amountPaid and paymentMode are required');
   }
 
-  const entryNum = req.body.paymentNumber || req.body.paymentId || req.body.entryNumber || `PAY-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const currentYear = new Date().getFullYear();
+  let entryNum = req.body.paymentNumber || req.body.paymentId || req.body.entryNumber;
+  if (!entryNum || await PaymentEntry.exists({ paymentNumber: entryNum })) {
+    const count = await PaymentEntry.countDocuments();
+    let nextSeq = count + 101;
+    let candidate = `PAY-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    while (await PaymentEntry.exists({ paymentNumber: candidate })) {
+      nextSeq++;
+      candidate = `PAY-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    }
+    entryNum = candidate;
+  }
   const entryId = req.body.id || `entry-${Date.now()}`;
 
   const newEntry = await PaymentEntry.create({

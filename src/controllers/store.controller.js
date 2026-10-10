@@ -74,8 +74,37 @@ exports.createOutward = asyncHandler(async (req, res) => {
     return ApiResponse.badRequest(res, 'issuedTo and items are required fields');
   }
 
-  const outNum = req.body.outwardNumber || `OUT-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+  const currentYear = new Date().getFullYear();
+  let outNum = req.body.outwardNumber || req.body.issueNumber;
+  if (!outNum || await StoreOutward.exists({ outwardNumber: outNum })) {
+    const count = await StoreOutward.countDocuments();
+    let nextSeq = count + 101;
+    let candidate = `OUT-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    while (await StoreOutward.exists({ outwardNumber: candidate })) {
+      nextSeq++;
+      candidate = `OUT-${currentYear}-${String(nextSeq).padStart(5, '0')}`;
+    }
+    outNum = candidate;
+  }
   const outId = req.body.id || `out-${Date.now()}`;
+
+  // Check stock sufficiency before proceeding
+  if (Array.isArray(items) && projectId) {
+    for (const it of items) {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(it.itemId);
+      const stockDoc = await Stock.findOne({
+        projectId,
+        $or: isObjectId ? [{ _id: it.itemId }, { itemId: it.itemId }] : [{ itemId: it.itemId }]
+      });
+      const available = stockDoc ? (stockDoc.quantity ?? stockDoc.currentStock ?? 0) : 0;
+      if (available < (it.quantity || 0)) {
+        return ApiResponse.badRequest(
+          res,
+          `Insufficient stock for item '${it.itemName || it.itemId}'. Available: ${available}, Requested: ${it.quantity}`
+        );
+      }
+    }
+  }
 
   const newOutward = await StoreOutward.create({
     ...req.body,
@@ -90,10 +119,14 @@ exports.createOutward = asyncHandler(async (req, res) => {
   // Automatically update stock levels & record stock transactions
   if (Array.isArray(items) && projectId) {
     for (const it of items) {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(it.itemId);
       await Stock.updateOne(
-        { projectId, itemId: it.itemId },
         {
-          $inc: { quantity: -(it.quantity || 0) },
+          projectId,
+          $or: isObjectId ? [{ _id: it.itemId }, { itemId: it.itemId }] : [{ itemId: it.itemId }]
+        },
+        {
+          $inc: { quantity: -(it.quantity || 0), currentStock: -(it.quantity || 0) },
           $set: { lastUpdated: new Date().toISOString() },
         }
       );

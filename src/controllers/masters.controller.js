@@ -241,7 +241,7 @@ exports.roles = {
 
   getById: asyncHandler(async (req, res) => {
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
-    const query = isObjectId ? { _id: req.params.id } : { role: req.params.id };
+    const query = isObjectId ? { _id: req.params.id } : { $or: [{ id: req.params.id }, { role: req.params.id }] };
 
     const record = await RolePermission.findOne(query);
     if (!record) {
@@ -264,6 +264,7 @@ exports.roles = {
     }
 
     const record = await RolePermission.create({
+      id: req.body.id || `role-${Date.now()}`,
       role: roleId,
       name: name || roleId,
       description: description || '',
@@ -278,7 +279,7 @@ exports.roles = {
 
   update: asyncHandler(async (req, res) => {
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
-    const query = isObjectId ? { _id: req.params.id } : { role: req.params.id };
+    const query = isObjectId ? { _id: req.params.id } : { $or: [{ id: req.params.id }, { role: req.params.id }] };
 
     const existing = await RolePermission.findOne(query);
     if (!existing) {
@@ -305,7 +306,7 @@ exports.roles = {
 
   remove: asyncHandler(async (req, res) => {
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(req.params.id);
-    const query = isObjectId ? { _id: req.params.id } : { role: req.params.id };
+    const query = isObjectId ? { _id: req.params.id } : { $or: [{ id: req.params.id }, { role: req.params.id }] };
 
     const role = await RolePermission.findOne(query);
     if (!role) {
