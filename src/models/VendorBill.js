@@ -73,6 +73,10 @@ const vendorBillSchema = new mongoose.Schema(
       type: String,
       default: 'Upcoming',
     },
+    createdBy: {
+      type: String,
+      trim: true,
+    }
   },
   {
     timestamps: true,

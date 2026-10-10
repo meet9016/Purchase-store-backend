@@ -132,6 +132,14 @@ const purchaseOrderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    createdBy: {
+      type: String,
+      trim: true,
+    },
+    buyerId: {
+      type: String,
+      trim: true,
+    }
   },
   {
     timestamps: true,
