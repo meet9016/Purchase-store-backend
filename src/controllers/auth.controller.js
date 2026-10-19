@@ -16,15 +16,6 @@ const DEFAULT_ROLE_PERMISSIONS = [
   { role: 'Management', modules: ['dashboard', 'reports', 'audit', 'notifications'] },
 ];
 
-const DEFAULT_DEMO_USERS = [
-  { name: 'Alok Sharma', email: 'admin@gmail.com', role: 'Admin', department: 'IT / Operations' },
-  { name: 'Rahul Verma', email: 'purchase@gmail.com', role: 'Purchase', department: 'Procurement' },
-  { name: 'Vikram Singh', email: 'store@gmail.com', role: 'Store', department: 'Warehouse & Inventory' },
-  { name: 'Sneha Patel', email: 'accounts@gmail.com', role: 'Accounts', department: 'Finance & Accounts' },
-  { name: 'Priya Mehta', email: 'approver@gmail.com', role: 'Approver', department: 'Executive Management' },
-  { name: 'Amit Kumar', email: 'requester@gmail.com', role: 'Requester', department: 'Site Operations' },
-];
-
 // POST /api/auth/login
 exports.login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
@@ -34,34 +25,7 @@ exports.login = asyncHandler(async (req, res) => {
   }
 
   const cleanEmail = email.toLowerCase().trim();
-  let user = await User.findOne({ email: cleanEmail });
-
-  // Auto-seed initial demo accounts or new users safely without duplicate key collision
-  if (!user) {
-    const matchedDemo = DEFAULT_DEMO_USERS.find((u) => u.email === cleanEmail);
-    if (matchedDemo || cleanEmail.includes('@')) {
-      try {
-        const role = matchedDemo ? matchedDemo.role : (cleanEmail.startsWith('admin') ? 'Admin' : 'Requester');
-        const name = matchedDemo ? matchedDemo.name : cleanEmail.split('@')[0].toUpperCase();
-        const department = matchedDemo ? matchedDemo.department : 'Operations Division';
-
-        user = await User.create({
-          name,
-          email: cleanEmail,
-          password: password || '123456',
-          role,
-          department,
-          active: true,
-        });
-      } catch (createErr) {
-        if (createErr.code === 11000) {
-          user = await User.findOne({ email: cleanEmail });
-        } else {
-          console.warn('[Auto-seed User Warning]', createErr.message);
-        }
-      }
-    }
-  }
+  const user = await User.findOne({ email: cleanEmail });
 
   if (!user) {
     return ApiResponse.unauthorized(res, 'Invalid email or password');
@@ -71,7 +35,7 @@ exports.login = asyncHandler(async (req, res) => {
     return ApiResponse.forbidden(res, 'Account is currently deactivated. Please contact Admin.');
   }
 
-  // Verify password with bcrypt or fallback
+  // Strictly verify password with bcrypt
   let isMatch = false;
   if (user.password) {
     try {
@@ -79,10 +43,6 @@ exports.login = asyncHandler(async (req, res) => {
     } catch (err) {
       isMatch = user.password === password;
     }
-  }
-
-  if (!isMatch && (password === '123456' || user.password === '123456' || user.password === password)) {
-    isMatch = true;
   }
 
   if (!isMatch) {

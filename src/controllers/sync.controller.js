@@ -82,18 +82,19 @@ exports.saveSyncState = asyncHandler(async (req, res) => {
           const emailKey = u.email.toLowerCase().trim();
 
           let userPassword = u.password;
-          if (!userPassword) {
-            userPassword = bcrypt.hashSync('123456', 10);
-          } else if (!userPassword.startsWith('$2a$') && !userPassword.startsWith('$2b$')) {
+          if (userPassword && !userPassword.startsWith('$2a$') && !userPassword.startsWith('$2b$')) {
             userPassword = bcrypt.hashSync(userPassword, 10);
           }
 
-          emailMap.set(emailKey, {
+          const userObj = {
             ...u,
             email: emailKey,
-            password: userPassword,
             active: u.active !== undefined ? u.active : true,
-          });
+          };
+          if (userPassword) {
+            userObj.password = userPassword;
+          }
+          emailMap.set(emailKey, userObj);
         }
         cleanDocs = Array.from(emailMap.values());
       } else {

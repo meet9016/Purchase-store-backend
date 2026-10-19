@@ -14,8 +14,9 @@ const protect = async (req, res, next) => {
     token = req.headers.authorization.split(' ')[1];
   }
 
-  if (!token) {
-    return ApiResponse.unauthorized(res, 'Authentication required. Please provide a valid token.');
+  // Missing or empty Authorization token should return 400 Bad Request
+  if (!token || token === 'null' || token === 'undefined' || token.trim() === '') {
+    return ApiResponse.badRequest(res, 'Authentication required. Please provide a valid token.');
   }
 
   try {

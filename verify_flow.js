@@ -3,8 +3,8 @@ const http = require('http');
 async function loginAndCreatePR() {
   // Step 1: Login
   const loginBody = JSON.stringify({
-    email: 'admin@gmail.com',
-    password: 'password123' === 'password123' ? '123456' : '123456'
+    email: process.env.TEST_EMAIL || 'admin@gmail.com',
+    password: process.env.TEST_PASSWORD || 'admin@123'
   });
 
   const req = http.request({

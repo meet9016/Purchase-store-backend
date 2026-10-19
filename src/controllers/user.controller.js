@@ -39,8 +39,8 @@ exports.getUserById = asyncHandler(async (req, res) => {
 exports.createUser = asyncHandler(async (req, res) => {
   const { name, email, role, department, projectAccess, password } = req.body;
 
-  if (!name || !email || !role) {
-    return ApiResponse.badRequest(res, 'Name, email, and role are required fields');
+  if (!name || !email || !role || !password) {
+    return ApiResponse.badRequest(res, 'Name, email, role, and password are required fields');
   }
 
   const existing = await User.findOne({ email: email.toLowerCase() });
@@ -55,7 +55,7 @@ exports.createUser = asyncHandler(async (req, res) => {
     role,
     department: department || 'Operations',
     projectAccess: projectAccess || [],
-    password: password || '123456',
+    password,
     active: true,
   });
 
