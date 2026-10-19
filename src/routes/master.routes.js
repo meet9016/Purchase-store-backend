@@ -3,7 +3,7 @@ const router = express.Router();
 const masters = require('../controllers/masters.controller');
 const { protect } = require('../middleware/auth.middleware');
 
-router.use(protect);
+router.use(['/projects', '/vendors', '/categories', '/units', '/items', '/roles'], protect);
 
 // Projects
 router.get('/projects', masters.projects.getAll);

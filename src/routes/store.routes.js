@@ -4,7 +4,7 @@ const store = require('../controllers/store.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { validateStoreOutward } = require('../middleware/validator.middleware');
 
-router.use(protect);
+router.use(['/stock', '/stock-transactions', '/store-outwards'], protect);
 
 // Stock & Inventory
 router.get('/stock', store.getAllStock);

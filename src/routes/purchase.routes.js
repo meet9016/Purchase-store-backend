@@ -4,7 +4,7 @@ const purchase = require('../controllers/purchase.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { validatePR, validatePO, validateGRN } = require('../middleware/validator.middleware');
 
-router.use(protect);
+router.use(['/purchase-requests', '/purchase-orders'], protect);
 
 // Purchase Requests
 router.get('/purchase-requests', purchase.getAllPRs);

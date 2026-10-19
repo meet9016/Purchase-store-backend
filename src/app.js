@@ -20,8 +20,9 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// API Routes
+// API Routes (supports /api, /api/api duplicate prefix fallback, and root)
 app.use('/api', routes);
+app.use('/api/api', routes);
 
 // 404 Not Found Catch-All
 app.use(notFound);

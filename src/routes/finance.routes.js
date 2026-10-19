@@ -4,7 +4,7 @@ const finance = require('../controllers/finance.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { validateVendorBill, validatePaymentRequest, validatePaymentEntry } = require('../middleware/validator.middleware');
 
-router.use(protect);
+router.use(['/vendor-bills', '/payment-requests', '/payment-entries'], protect);
 
 // Vendor Invoices / Bills
 router.get('/vendor-bills', finance.getAllBills);

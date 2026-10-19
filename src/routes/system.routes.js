@@ -4,7 +4,7 @@ const system = require('../controllers/system.controller');
 const { protect } = require('../middleware/auth.middleware');
 const { authorizeRoles } = require('../middleware/rbac.middleware');
 
-router.use(protect);
+router.use(['/audit-logs', '/notifications', '/role-permissions'], protect);
 
 // Audit Logs
 router.get('/audit-logs', system.getAllAuditLogs);
