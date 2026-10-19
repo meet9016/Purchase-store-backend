@@ -7,13 +7,7 @@ const asyncHandler = require('../utils/asyncHandler');
 
 // Default Role Module Permissions Mapping
 const DEFAULT_ROLE_PERMISSIONS = [
-  { role: 'Admin', modules: ['dashboard', 'masters', 'pr', 'po', 'grn', 'stock', 'outward', 'bills', 'payment-req', 'payments', 'reports', 'audit', 'notifications', 'permissions'] },
-  { role: 'Requester', modules: ['dashboard', 'pr', 'stock', 'reports', 'notifications'] },
-  { role: 'Approver', modules: ['dashboard', 'pr', 'po', 'payment-req', 'reports', 'notifications'] },
-  { role: 'Purchase', modules: ['dashboard', 'masters', 'pr', 'po', 'grn', 'vendors', 'reports', 'notifications'] },
-  { role: 'Store', modules: ['dashboard', 'grn', 'stock', 'outward', 'reports', 'notifications'] },
-  { role: 'Accounts', modules: ['dashboard', 'bills', 'payment-req', 'payments', 'reports', 'notifications'] },
-  { role: 'Management', modules: ['dashboard', 'reports', 'audit', 'notifications'] },
+  { role: 'Admin', modules: ['dashboard', 'masters', 'pr', 'po', 'grn', 'stock', 'outward', 'bills', 'payment-req', 'payments', 'reports', 'audit', 'notifications', 'permissions'] }
 ];
 
 // POST /api/auth/login

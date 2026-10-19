@@ -76,16 +76,10 @@ function createCrudController(Model, searchFields = ['name'], modelName = 'Recor
 const RolePermission = require('../models/RolePermission');
 
 const DEFAULT_SYSTEM_ROLES = [
-  { role: 'Admin', name: 'Admin', description: 'Complete system control, user administration, & full override permissions', isSystemRole: true, status: 'Active' },
-  { role: 'Requester', name: 'Requester', description: 'Site engineer / user raising Purchase Requests (PR) and tracking inventory', isSystemRole: true, status: 'Active' },
-  { role: 'Approver', name: 'Approver', description: 'Authorizer approving/rejecting PRs, POs, and Payment Requests', isSystemRole: true, status: 'Active' },
-  { role: 'Purchase', name: 'Purchase', description: 'Procurement team generating POs, managing vendors, and materials', isSystemRole: true, status: 'Active' },
-  { role: 'Store', name: 'Store', description: 'Storekeeper managing material inward (GRN), inventory, and outward issues', isSystemRole: true, status: 'Active' },
-  { role: 'Accounts', name: 'Accounts', description: 'Finance team managing vendor invoices/bills and payment disbursements', isSystemRole: true, status: 'Active' },
-  { role: 'Management', name: 'Management', description: 'Executive team reviewing audit trails, KPIs, and reports', isSystemRole: true, status: 'Active' }
+  { role: 'Admin', name: 'Admin', description: 'Complete system control, user administration, & full override permissions', isSystemRole: true, status: 'Active' }
 ];
 
-// Seed default roles if any are missing
+// Seed default roles if any are missing (Admin only)
 async function ensureDefaultRoles() {
   try {
     for (const r of DEFAULT_SYSTEM_ROLES) {
@@ -102,33 +96,6 @@ async function ensureDefaultRoles() {
   }
 }
 
-const DEFAULT_UNITS = [
-  { code: 'MT', name: 'Metric Ton', description: 'Weight unit for heavy construction steel & cement', status: 'Active' },
-  { code: 'Pcs', name: 'Pieces', description: 'Unit for individual counted goods and equipment', status: 'Active' },
-  { code: 'Bag', name: 'Bags', description: 'Standard packaging bags for cement and dry aggregates', status: 'Active' },
-  { code: 'Kg', name: 'Kilograms', description: 'Standard mass weight unit', status: 'Active' },
-  { code: 'Mtrs', name: 'Meters', description: 'Linear length for conduits, cables and pipes', status: 'Active' },
-  { code: 'Cu.M', name: 'Cubic Meters', description: 'Volumetric measurement for concrete and bulk materials', status: 'Active' },
-  { code: 'Brass', name: 'Brass', description: 'Traditional construction volume measurement for sand/aggregates', status: 'Active' },
-  { code: 'Ltr', name: 'Liters', description: 'Liquid measurement for oils, paints and chemicals', status: 'Active' },
-  { code: 'Box', name: 'Boxes', description: 'Carton packaging units', status: 'Active' },
-  { code: 'Nos', name: 'Numbers', description: 'General numbering count unit', status: 'Active' },
-  { code: 'SqFt', name: 'Square Feet', description: 'Area measurement for flooring, tiles and sheets', status: 'Active' },
-  { code: 'Bundle', name: 'Bundles', description: 'Bundled materials like binding wire, rebars and rebar ties', status: 'Active' },
-];
-
-// Seed default units if none exist
-async function ensureDefaultUnits() {
-  try {
-    const count = await Unit.countDocuments();
-    if (count === 0) {
-      await Unit.insertMany(DEFAULT_UNITS);
-    }
-  } catch (e) {
-    console.warn('Error checking/seeding default units:', e?.message || e);
-  }
-}
-
 // ─── Masters Controllers ──────────────────────────────────────────────────────
 exports.projects = createCrudController(Project, ['name', 'location', 'status'], 'Project');
 exports.vendors = createCrudController(Vendor, ['name', 'contactPerson', 'phone', 'email', 'gstNo'], 'Vendor');
@@ -138,7 +105,6 @@ exports.items = createCrudController(Item, ['name', 'itemCode', 'subCategory', '
 // ─── Units Master Controller ──────────────────────────────────────────────────
 exports.units = {
   getAll: asyncHandler(async (req, res) => {
-    await ensureDefaultUnits();
     const searchFields = ['code', 'name', 'status'];
     const features = new ApiFeatures(Unit.find(), req.query, searchFields)
       .search()
