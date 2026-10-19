@@ -85,12 +85,17 @@ const DEFAULT_SYSTEM_ROLES = [
   { role: 'Management', name: 'Management', description: 'Executive team reviewing audit trails, KPIs, and reports', isSystemRole: true, status: 'Active' }
 ];
 
-// Seed default roles if none exist
+// Seed default roles if any are missing
 async function ensureDefaultRoles() {
   try {
-    const count = await RolePermission.countDocuments();
-    if (count === 0) {
-      await RolePermission.insertMany(DEFAULT_SYSTEM_ROLES);
+    for (const r of DEFAULT_SYSTEM_ROLES) {
+      const exists = await RolePermission.findOne({ role: r.role });
+      if (!exists) {
+        await RolePermission.create({
+          id: `role-${r.role.toLowerCase()}`,
+          ...r,
+        });
+      }
     }
   } catch (e) {
     console.warn('Error checking/seeding default roles:', e?.message || e);

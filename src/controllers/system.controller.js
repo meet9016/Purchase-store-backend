@@ -97,18 +97,30 @@ exports.getAllRolePermissions = asyncHandler(async (req, res) => {
 
 exports.updateRolePermission = asyncHandler(async (req, res) => {
   const { role } = req.params;
+  const existing = await RolePermission.findOne({ role: { $regex: new RegExp(`^${role}$`, 'i') } });
+  
+  const updateData = { ...req.body };
+  if (updateData.newRoleName) {
+    updateData.name = updateData.newRoleName;
+  }
+  
+  const targetRole = existing ? existing.role : role;
+  
   const updated = await RolePermission.findOneAndUpdate(
-    { role },
-    { ...req.body, role },
+    { role: targetRole },
+    { ...updateData, role: targetRole },
     { new: true, upsert: true, runValidators: true }
   );
 
-  return ApiResponse.success(res, updated, `Permissions for role '${role}' updated successfully`);
+  return ApiResponse.success(res, updated, `Permissions for role '${targetRole}' updated successfully`);
 });
 
 exports.deleteRolePermission = asyncHandler(async (req, res) => {
   const { role } = req.params;
-  const result = await RolePermission.findOneAndDelete({ role });
+  if (role.toLowerCase() === 'admin') {
+    return ApiResponse.badRequest(res, 'Cannot delete Admin role');
+  }
+  const result = await RolePermission.findOneAndDelete({ role: { $regex: new RegExp(`^${role}$`, 'i') } });
   if (!result) {
     return ApiResponse.notFound(res, `Role '${role}' not found`);
   }
