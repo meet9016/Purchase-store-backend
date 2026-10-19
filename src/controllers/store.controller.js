@@ -1,4 +1,5 @@
 const Stock = require('../models/Stock');
+const Item = require('../models/Item');
 const StockTransaction = require('../models/StockTransaction');
 const StoreOutward = require('../models/StoreOutward');
 const ApiResponse = require('../utils/apiResponse');
@@ -16,7 +17,30 @@ exports.getAllStock = asyncHandler(async (req, res) => {
   await features.paginate();
   const data = await features.query;
 
-  return ApiResponse.success(res, data, 'Stock list retrieved', 200, features.paginationInfo);
+  // Auto-fill itemCode, reorderLevel, and minStock from Item catalog if missing
+  const items = await Item.find().select('itemCode reorderLevel minStock unit name');
+  const itemsMap = new Map();
+  items.forEach((i) => {
+    itemsMap.set(i._id.toString(), i);
+    if (i.id) itemsMap.set(i.id, i);
+    if (i.name) itemsMap.set(i.name.toLowerCase().trim(), i);
+  });
+
+  const enrichedData = data.map((s) => {
+    const obj = s.toObject ? s.toObject() : { ...s };
+    const matched =
+      itemsMap.get(obj.itemId) ||
+      (obj.itemName ? itemsMap.get(obj.itemName.toLowerCase().trim()) : null);
+    if (matched) {
+      if (!obj.itemCode) obj.itemCode = matched.itemCode || '';
+      if (!obj.reorderLevel) obj.reorderLevel = matched.reorderLevel || 10;
+      if (!obj.minStock) obj.minStock = matched.minStock || 0;
+      if (!obj.unit || obj.unit === 'Pcs') obj.unit = matched.unit || obj.unit || 'Pcs';
+    }
+    return obj;
+  });
+
+  return ApiResponse.success(res, enrichedData, 'Stock list retrieved', 200, features.paginationInfo);
 });
 
 exports.updateStock = asyncHandler(async (req, res) => {
